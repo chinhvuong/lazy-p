@@ -2,6 +2,7 @@ import { execSync } from 'child_process';
 import type { MeetingSession } from './session.js';
 import { writeMeetingMd } from './meeting-md.js';
 import { NotebookLMExtractor, ClaudeAPIExtractor, type TaskExtractor } from './mcp-client.js';
+import type { MeetingStore } from './meeting-store.js';
 
 export interface PipelineEvent {
   type: 'pipeline_started' | 'pipeline_step' | 'pipeline_complete' | 'pipeline_error';
@@ -20,13 +21,15 @@ export interface PipelineOptions {
   onEvent?: PipelineEventCallback;
   /** Override the task extractor; defaults to NotebookLM → Claude API fallback chain. */
   extractor?: TaskExtractor;
+  /** When provided, the completed meeting is persisted to the archive. */
+  store?: MeetingStore;
 }
 
 export async function runPipeline(
   session: MeetingSession,
   options: PipelineOptions = {},
 ): Promise<void> {
-  const { outputDir = process.cwd(), onEvent = () => {}, extractor } = options;
+  const { outputDir = process.cwd(), onEvent = () => {}, extractor, store } = options;
 
   const emit = (event: PipelineEvent) => onEvent(event);
   emit({ type: 'pipeline_started' });
@@ -47,9 +50,11 @@ export async function runPipeline(
     : [new NotebookLMExtractor(), new ClaudeAPIExtractor()];
 
   let taskList: string[] = [];
+  let succeededExtractor: TaskExtractor | null = null;
   for (const ex of extractors) {
     try {
       taskList = await ex.extractTasks(session.id, transcriptText, chatText);
+      succeededExtractor = ex;
       emit({ type: 'pipeline_step', step: 'extract', message: 'Task extraction complete.' });
       break;
     } catch (err) {
@@ -70,6 +75,24 @@ export async function runPipeline(
     const msg = err instanceof Error ? err.message : String(err);
     emit({ type: 'pipeline_error', error: `Failed to write MEETING.md: ${msg}` });
     return;
+  }
+
+  // Persist to archive if store is provided
+  if (store) {
+    const date = session.startedAt.split('T')[0];
+    store.saveMeeting({
+      id: session.id,
+      date,
+      meetingFilePath: meetingFile,
+      status: 'complete',
+      startedAt: session.startedAt,
+      participants: session.allParticipants,
+      taskList: session.taskList,
+    });
+
+    if (succeededExtractor?.notebookId) {
+      store.saveNotebookId(session.id, succeededExtractor.notebookId);
+    }
   }
 
   // Open Claude Code

@@ -5,6 +5,7 @@ import { join } from 'path';
 import { runPipeline, type PipelineEvent } from '../src/pipeline.js';
 import { resetSessions, createSession, applyExtensionEvent, type MeetingSession } from '../src/session.js';
 import type { TaskExtractor } from '../src/mcp-client.js';
+import { MeetingStore } from '../src/meeting-store.js';
 
 function makeSession(): MeetingSession {
   resetSessions();
@@ -126,6 +127,55 @@ describe('runPipeline — integration', () => {
     const completeEvent = events.find(e => e.type === 'pipeline_complete')!;
     expect(completeEvent.participants).toContain('Alice');
     expect(completeEvent.participants).toContain('Bob');
+  });
+
+  it('persists meeting to store when store is injected', async () => {
+    const store = new MeetingStore(':memory:');
+    const session = makeSession();
+    await runPipeline(session, {
+      outputDir: tmpDir,
+      onEvent: () => {},
+      extractor: mockExtractor,
+      store,
+    });
+
+    const meetings = store.getAll();
+    expect(meetings).toHaveLength(1);
+    expect(meetings[0].date).toBe('2026-06-14');
+    expect(meetings[0].meeting_file_path).toContain('MEETING-2026-06-14.md');
+    expect(meetings[0].status).toBe('complete');
+    store.close();
+  });
+
+  it('saves notebook ID to store when extractor provides one', async () => {
+    const store = new MeetingStore(':memory:');
+    const extractorWithNotebook: TaskExtractor = {
+      extractTasks: vi.fn(async () => ['- Task 1']),
+      notebookId: 'notebook-xyz',
+    };
+    const session = makeSession();
+    await runPipeline(session, {
+      outputDir: tmpDir,
+      onEvent: () => {},
+      extractor: extractorWithNotebook,
+      store,
+    });
+
+    const row = store.getAll()[0];
+    expect(row.notebook_id).toBe('notebook-xyz');
+    store.close();
+  });
+
+  it('does not fail when no store is provided (backward compat)', async () => {
+    const session = makeSession();
+    await runPipeline(session, {
+      outputDir: tmpDir,
+      onEvent: e => events.push(e),
+      extractor: mockExtractor,
+      // no store
+    });
+
+    expect(events.at(-1)!.type).toBe('pipeline_complete');
   });
 
   it('falls through to next extractor when first one throws', async () => {

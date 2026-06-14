@@ -3,10 +3,14 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 export interface TaskExtractor {
   extractTasks(sessionId: string, transcript: string, chatLog: string): Promise<string[]>;
+  /** Notebook ID (URL or identifier) produced during extraction, if available. */
+  notebookId?: string;
 }
 
 /** Uses the community notebooklm-mcp server (npx notebooklm-mcp@latest) via stdio MCP. */
 export class NotebookLMExtractor implements TaskExtractor {
+  notebookId: string | undefined = undefined;
+
   async extractTasks(sessionId: string, transcript: string, chatLog: string): Promise<string[]> {
     const transport = new StdioClientTransport({
       command: 'npx',
@@ -20,10 +24,18 @@ export class NotebookLMExtractor implements TaskExtractor {
 
       // Tool names are from the notebooklm-mcp community server.
       // Verify against https://github.com/sshh12/notebooklm-mcp if they change.
-      await client.callTool({
+      const createResult = await client.callTool({
         name: 'create_notebook',
         arguments: { title: `Meeting ${sessionId}` },
       });
+
+      type ContentBlock = { type: string; text?: string };
+
+      // Try to extract notebook ID from the create_notebook response text
+      const createBlocks = createResult.content as ContentBlock[];
+      const createText = createBlocks.filter(b => b.type === 'text' && b.text).map(b => b.text!).join('\n');
+      const urlMatch = createText.match(/notebook\/([a-zA-Z0-9_-]+)/);
+      if (urlMatch) this.notebookId = urlMatch[1];
 
       await client.callTool({
         name: 'add_source',
@@ -43,7 +55,6 @@ export class NotebookLMExtractor implements TaskExtractor {
         },
       });
 
-      type ContentBlock = { type: string; text?: string };
       const blocks = result.content as ContentBlock[];
       const answer = blocks
         .filter(b => b.type === 'text' && b.text)
