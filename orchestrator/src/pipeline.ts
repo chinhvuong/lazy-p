@@ -23,13 +23,15 @@ export interface PipelineOptions {
   extractor?: TaskExtractor;
   /** When provided, the completed meeting is persisted to the archive. */
   store?: MeetingStore;
+  /** NotebookLM notebook URL — required for NotebookLMExtractor (v2.x). Falls back to Claude API if absent. */
+  notebookUrl?: string;
 }
 
 export async function runPipeline(
   session: MeetingSession,
   options: PipelineOptions = {},
 ): Promise<void> {
-  const { outputDir = process.cwd(), onEvent = () => {}, extractor, store } = options;
+  const { outputDir = process.cwd(), onEvent = () => {}, extractor, store, notebookUrl } = options;
 
   const emit = (event: PipelineEvent) => onEvent(event);
   emit({ type: 'pipeline_started' });
@@ -53,7 +55,7 @@ export async function runPipeline(
   let succeededExtractor: TaskExtractor | null = null;
   for (const ex of extractors) {
     try {
-      taskList = await ex.extractTasks(session.id, transcriptText, chatText);
+      taskList = await ex.extractTasks(session.id, transcriptText, chatText, notebookUrl);
       succeededExtractor = ex;
       emit({ type: 'pipeline_step', step: 'extract', message: 'Task extraction complete.' });
       break;

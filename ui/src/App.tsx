@@ -35,7 +35,7 @@ interface MeetingDetail extends MeetingListItem {
   chat: ChatMessageRow[];
 }
 
-type View = 'archive' | 'live' | 'detail' | 'import';
+type View = 'loading' | 'onboarding' | 'archive' | 'live' | 'detail' | 'import';
 
 const LIVE_INITIAL: LiveState = {
   status: 'idle',
@@ -52,11 +52,12 @@ const WS_URL = `ws://${window.location.host}?type=ui`;
 
 export default function App() {
   const [live, setLive] = useState<LiveState>(LIVE_INITIAL);
-  const [view, setView] = useState<View>('archive');
+  const [view, setView] = useState<View>('loading');
   const [meetings, setMeetings] = useState<MeetingListItem[]>([]);
   const [detail, setDetail] = useState<MeetingDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [importProgress, setImportProgress] = useState<string[]>([]);
+  const [onboardingError, setOnboardingError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   const fetchMeetings = useCallback(async () => {
@@ -83,6 +84,15 @@ export default function App() {
 
     ws.onmessage = (e) => {
       const event = JSON.parse(e.data) as Record<string, unknown>;
+
+      if (event.type === 'notebooklm_authenticated') {
+        setView('archive');
+        setOnboardingError(null);
+      }
+
+      if (event.type === 'notebooklm_auth_error') {
+        setOnboardingError(event.error as string);
+      }
 
       if (event.type === 'meeting_saved' || event.type === 'import_complete') {
         fetchMeetings();
@@ -159,6 +169,12 @@ export default function App() {
   useEffect(() => {
     connect();
     fetchMeetings();
+
+    fetch('/api/health/notebooklm')
+      .then(r => r.json())
+      .then((data: { authenticated: boolean }) => setView(data.authenticated ? 'archive' : 'onboarding'))
+      .catch(() => setView('onboarding'));
+
     return () => wsRef.current?.close();
   }, [connect, fetchMeetings]);
 
@@ -185,7 +201,7 @@ export default function App() {
           {view === 'archive' && (
             <button className="btn-import" onClick={() => setView('import')}>Import Meeting</button>
           )}
-          {isLive && (
+          {isLive && view !== 'onboarding' && view !== 'loading' && (
             <button className="btn-end" onClick={endMeeting} disabled={live.status === 'pipeline_running'}>
               End Meeting
             </button>
@@ -193,6 +209,13 @@ export default function App() {
         </div>
       </header>
 
+      {view === 'loading' && <div className="onboarding"><div className="onboarding-card onboarding-loading">Connecting…</div></div>}
+      {view === 'onboarding' && (
+        <OnboardingView
+          error={onboardingError}
+          onConnecting={() => setOnboardingError(null)}
+        />
+      )}
       {view === 'live' && (
         <LiveView live={live} onEndMeeting={endMeeting} />
       )}
@@ -227,6 +250,41 @@ export default function App() {
         />
       )}
     </>
+  );
+}
+
+// ── Onboarding ────────────────────────────────────────────────────────────────
+
+function OnboardingView({ error, onConnecting }: { error: string | null; onConnecting: () => void }) {
+  const [status, setStatus] = useState<'idle' | 'connecting'>('idle');
+
+  async function startAuth() {
+    setStatus('connecting');
+    onConnecting();
+    // Server responds with 202 immediately; auth happens in background.
+    // WS will broadcast notebooklm_authenticated / notebooklm_auth_error when done.
+    await fetch('/api/auth/notebooklm', { method: 'POST' }).catch(() => {});
+  }
+
+  return (
+    <div className="onboarding">
+      <div className="onboarding-card">
+        <div className="onboarding-logo">lazy-p</div>
+        <h2>Connect NotebookLM</h2>
+        <p>lazy-p uses NotebookLM to answer questions about your meetings. A browser window will open for you to sign in with Google.</p>
+        {error && <div className="onboarding-error">{error}</div>}
+        {status === 'connecting' && !error && (
+          <p className="onboarding-hint">Browser is open — sign in with Google. This screen updates automatically when done.</p>
+        )}
+        <button
+          className="btn-connect"
+          onClick={startAuth}
+          disabled={status === 'connecting' && !error}
+        >
+          {status === 'connecting' && !error ? 'Waiting for sign-in…' : 'Connect to NotebookLM'}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -594,6 +652,7 @@ function ImportView({
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [notebookUrl, setNotebookUrl] = useState('');
 
   const isRunning = progress.length > 0;
 
@@ -601,6 +660,7 @@ function ImportView({
     const fd = new FormData();
     fd.append('date', date);
     if (title) fd.append('title', title);
+    if (notebookUrl.trim()) fd.append('notebookUrl', notebookUrl.trim());
     if (sourceType === 'text') {
       fd.append('text', text);
     } else if (file) {
@@ -635,6 +695,18 @@ function ImportView({
             onChange={e => setTitle(e.target.value)}
             disabled={isRunning}
           />
+        </div>
+
+        <div className="form-group">
+          <label>NotebookLM URL <span className="optional">(optional)</span></label>
+          <input
+            type="url"
+            placeholder="https://notebooklm.google.com/notebook/..."
+            value={notebookUrl}
+            onChange={e => setNotebookUrl(e.target.value)}
+            disabled={isRunning}
+          />
+          <p className="hint">Create a notebook at notebooklm.google.com and paste its URL to enable Meeting Chat and task extraction.</p>
         </div>
 
         <div className="form-group">

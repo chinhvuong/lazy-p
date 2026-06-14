@@ -4,6 +4,12 @@ import type { MeetingStore, ChatMessageRow } from './meeting-store.js';
 
 type ContentBlock = { type: string; text?: string };
 
+function resolveNotebookUrl(notebookId: string): string {
+  return notebookId.startsWith('https://')
+    ? notebookId
+    : `https://notebooklm.google.com/notebook/${notebookId}`;
+}
+
 export class MeetingChatHandler {
   constructor(private store: MeetingStore) {}
 
@@ -13,6 +19,8 @@ export class MeetingChatHandler {
     if (!meeting.notebook_id) {
       throw new Error('No NotebookLM notebook for this meeting. Meeting Chat is unavailable.');
     }
+
+    const notebookUrl = resolveNotebookUrl(meeting.notebook_id);
 
     const transport = new StdioClientTransport({
       command: 'npx',
@@ -24,15 +32,9 @@ export class MeetingChatHandler {
     try {
       await client.connect(transport);
 
-      // Navigate to the existing notebook by ID
-      await client.callTool({
-        name: 'get_notebook',
-        arguments: { notebook_id: meeting.notebook_id },
-      });
-
       const result = await client.callTool({
         name: 'ask_question',
-        arguments: { question },
+        arguments: { question, notebook_url: notebookUrl, source_format: 'footnotes' },
       });
 
       const blocks = result.content as ContentBlock[];
@@ -41,7 +43,7 @@ export class MeetingChatHandler {
         .map(b => b.text!)
         .join('\n');
     } finally {
-      await client.close();
+      await client.close().catch(() => {});
     }
 
     this.store.addChatMessage(meetingId, 'user', question);

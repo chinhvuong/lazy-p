@@ -19,6 +19,8 @@ export interface ImportOptions {
   title?: string;
   outputDir: string;
   store: MeetingStore;
+  /** Full NotebookLM URL (e.g. https://notebooklm.google.com/notebook/<uuid>). */
+  notebookUrl?: string;
   onProgress?: (message: string) => void;
 }
 
@@ -171,7 +173,7 @@ function extractAudioFromVideo(videoPath: string, audioDest: string, onProgress?
 }
 
 export async function runImportPipeline(source: ImportSource, options: ImportOptions): Promise<ImportResult> {
-  const { date, title, outputDir, store, onProgress } = options;
+  const { date, title, outputDir, store, notebookUrl, onProgress } = options;
   const id = uuidv4();
 
   let transcript: TranscriptEntry[];
@@ -233,16 +235,22 @@ export async function runImportPipeline(source: ImportSource, options: ImportOpt
     status: 'complete' as const,
   };
 
-  // Attempt to create NotebookLM notebook and extract tasks
+  // Attempt NotebookLM extraction — only if a notebook URL was provided (v2.x cannot create notebooks)
   const extractor = new NotebookLMExtractor();
   let notebookId: string | undefined;
-  try {
-    onProgress?.('Creating NotebookLM notebook and extracting tasks…');
-    const transcriptText = transcript.map(t => `[${t.timestamp}] ${t.speaker}: ${t.text}`).join('\n');
-    session.taskList = await extractor.extractTasks(id, transcriptText, '');
-    notebookId = extractor.notebookId;
-  } catch {
-    onProgress?.('Warning: NotebookLM unavailable — Meeting Chat will not be available for this import.');
+  const transcriptText = transcript.map(t => `[${t.timestamp}] ${t.speaker}: ${t.text}`).join('\n');
+  if (notebookUrl) {
+    try {
+      onProgress?.('Adding transcript to NotebookLM and extracting tasks…');
+      session.taskList = await extractor.extractTasks(id, transcriptText, '', notebookUrl);
+      notebookId = extractor.notebookId;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      onProgress?.(`Warning: NotebookLM task extraction failed (${msg}). Meeting Chat will still use the notebook for Q&A.`);
+      notebookId = notebookUrl; // still link the notebook even if extraction failed
+    }
+  } else {
+    onProgress?.('No NotebookLM URL provided — skipping task extraction. Meeting Chat unavailable.');
   }
 
   onProgress?.('Writing MEETING.md…');

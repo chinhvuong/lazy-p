@@ -10,6 +10,7 @@ import { runPipeline, type PipelineEvent } from './pipeline.js';
 import type { MeetingStore } from './meeting-store.js';
 import { MeetingChatHandler } from './meeting-chat.js';
 import { runImportPipeline, type ImportSource } from './import-pipeline.js';
+import { getNotebookLMHealth, setupNotebookLMAuth } from './mcp-client.js';
 
 const uiClients = new Set<WebSocket>();
 
@@ -145,6 +146,28 @@ export function createOrchestrator(
     res.sendFile(row.recording_path);
   });
 
+  app.get('/api/health/notebooklm', async (_req, res) => {
+    try {
+      const health = await getNotebookLMHealth();
+      res.json(health);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(503).json({ authenticated: false, status: 'error', error: message });
+    }
+  });
+
+  app.post('/api/auth/notebooklm', async (_req, res) => {
+    // Respond immediately — auth opens a browser and may take minutes
+    res.status(202).json({ status: 'connecting' });
+    try {
+      await setupNotebookLMAuth();
+      broadcast({ type: 'notebooklm_authenticated' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      broadcast({ type: 'notebooklm_auth_error', error: message });
+    }
+  });
+
   app.post(
     '/api/meetings/import',
     upload.single('file'),
@@ -154,6 +177,7 @@ export function createOrchestrator(
       const date = (req.body as Record<string, string>).date;
       const title = (req.body as Record<string, string>).title || undefined;
       const text = (req.body as Record<string, string>).text;
+      const notebookUrl = (req.body as Record<string, string>).notebookUrl || undefined;
 
       if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return res.status(400).json({ error: 'date (YYYY-MM-DD) is required' });
@@ -191,6 +215,7 @@ export function createOrchestrator(
           title,
           outputDir,
           store,
+          notebookUrl,
           onProgress: (msg) => broadcast({ type: 'import_progress', jobId, message: msg }),
         });
         broadcast({ type: 'import_complete', jobId, meetingId: result.meetingId });
