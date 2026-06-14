@@ -1,0 +1,16 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - heading "lazy-p" [level=1] [ref=e4]
+    - generic [ref=e5]:
+      - generic [ref=e6]: idle
+      - button "End Meeting" [disabled] [ref=e7]
+  - generic [ref=e8]:
+    - generic [ref=e9]:
+      - generic [ref=e10]: Participants (0)
+      - paragraph [ref=e12]: Waiting for participants…
+    - generic [ref=e13]:
+      - generic [ref=e14]: Transcript (0)
+      - paragraph [ref=e16]: Transcript will appear when captions are active…
+    - generic [ref=e17]:
+      - generic [ref=e18]: Chat Log (0)
+      - paragraph [ref=e20]: Chat messages will appear here…

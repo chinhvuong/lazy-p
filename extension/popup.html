@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 240px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a1a;
+      color: #e8e8e8;
+      padding: 14px;
+    }
+    h1 { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+    .status {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 12px;
+    }
+    .status.idle { background: #2a2a2a; color: #888; }
+    .status.recording { background: #1a3a1a; color: #4caf50; }
+    .status.paused { background: #3a3a1a; color: #ffc107; }
+    .status.pipeline { background: #1a2a3a; color: #2196f3; }
+    .counts { font-size: 12px; color: #888; margin-bottom: 12px; line-height: 1.6; }
+    .counts span { color: #ccc; font-weight: 600; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 8px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 6px;
+    }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn-end { background: #c62828; color: #fff; }
+    .btn-end:hover:not(:disabled) { background: #e53935; }
+    .btn-pause { background: #333; color: #ffc107; }
+    .btn-pause:hover:not(:disabled) { background: #3a3a1a; }
+    .open-ui { font-size: 11px; color: #555; text-align: center; margin-top: 8px; cursor: pointer; }
+    .open-ui:hover { color: #999; }
+  </style>
+</head>
+<body>
+  <h1>lazy-p</h1>
+  <div class="status idle" id="status-badge">Idle</div>
+  <div class="counts">
+    Transcript: <span id="count-transcript">0</span><br>
+    Chat: <span id="count-chat">0</span><br>
+    Participants: <span id="count-participants">0</span>
+  </div>
+  <button class="btn btn-end" id="btn-end" disabled>End Meeting</button>
+  <button class="btn btn-pause" id="btn-pause" disabled>Pause Capture</button>
+  <div class="open-ui" id="open-ui">Open Dashboard →</div>
+  <script src="dist/popup.js"></script>
+</body>
+</html>

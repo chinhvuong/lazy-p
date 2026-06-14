@@ -1,0 +1,14 @@
+{
+  "name": "lazy-p",
+  "private": true,
+  "workspaces": ["orchestrator", "ui", "extension"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev -w orchestrator\" \"npm run dev -w ui\"",
+    "build": "npm run build -w ui && npm run build -w orchestrator",
+    "test": "npm run test -w orchestrator && npm run test -w extension",
+    "start": "npm run start -w orchestrator"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
